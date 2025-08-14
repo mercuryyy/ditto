@@ -28,13 +28,20 @@ RunPod will build the Docker image directly from your GitHub repository, elimina
 
 ### Repository Setup:
 
-1. **Fork the Repository** (if you haven't already):
-   - Go to the original repository: `https://github.com/antgroup/ditto-talkinghead`
-   - Click "Fork" to create your own copy
-   - Clone your fork locally for any customizations:
+The project is ready-to-deploy at: **https://github.com/mercuryyy/ditto.git**
+
+1. **Use the Pre-configured Repository** (Recommended):
+   - Repository URL: `https://github.com/mercuryyy/ditto.git` 
+   - This repository is already configured with all necessary files and optimizations
+   - No forking needed - you can deploy directly from this repository
+
+2. **Or Fork for Customizations** (Optional):
+   - Go to: `https://github.com/mercuryyy/ditto.git`
+   - Click "Fork" to create your own copy for customizations
+   - Clone your fork locally if needed:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/ditto-talkinghead.git
-   cd ditto-talkinghead
+   git clone https://github.com/YOUR_USERNAME/ditto.git
+   cd ditto
    ```
 
 2. **Verify Required Files**:
@@ -63,7 +70,7 @@ RunPod will build the Docker image directly from your GitHub repository, elimina
 ### Basic Configuration:
    - **Name**: `ditto-talkinghead`
    - **Source**: Select **"GitHub Repository"**
-   - **GitHub URL**: `https://github.com/YOUR_USERNAME/ditto-talkinghead`
+   - **GitHub URL**: `https://github.com/mercuryyy/ditto.git`
    - **Branch**: `main` (or your preferred branch)
    - **Docker Build Context**: `/` (root directory)
    - **Dockerfile Path**: `/Dockerfile`
