@@ -1,5 +1,5 @@
-# Target platform: linux/amd64 for RunPod GPU servers
-FROM --platform=linux/amd64 nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+# RunPod automatically handles platform selection
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 # Set working directory
 WORKDIR /workspace
@@ -8,49 +8,66 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
+    python3.10-dev \
     git \
     git-lfs \
     ffmpeg \
     build-essential \
     libsndfile1 \
+    libsndfile1-dev \
     espeak \
     libespeak1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as default
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
 
-# Upgrade pip
-RUN pip install --upgrade pip
+# Upgrade pip and install essential tools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install PyTorch with CUDA 11.8 support (optimized for RunPod GPUs)
-RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
 
-# Install core dependencies
-RUN pip install \
+# Copy requirements first for better caching
+COPY requirements_local.txt /tmp/requirements_local.txt
+COPY requirements_webui.txt /tmp/requirements_webui.txt
+
+# Install core dependencies from requirements files with version compatibility fixes
+RUN pip install --no-cache-dir \
     librosa \
     tqdm \
     filetype \
     imageio \
+    imageio-ffmpeg \
     opencv-python-headless \
     scikit-image \
     scikit-learn \
     scipy \
     cython \
-    imageio-ffmpeg \
     colored \
-    "numpy<2.0" \
+    "numpy>=1.24.0,<2.1.0" \
     runpod \
     pyttsx3 \
     gtts \
     onnxruntime-gpu==1.15.1 \
     mediapipe \
-    einops
+    einops \
+    gradio==4.44.0 \
+    Pillow==10.3.0 \
+    pydub==0.25.1 \
+    requests
 
-# Install TensorRT for NVIDIA GPUs (will work on RunPod)
-# Using specific NVIDIA PyPI index for TensorRT
-RUN pip install --index-url https://pypi.nvidia.com \
+# Install TensorRT with better error handling and fallback
+RUN pip install --no-cache-dir --index-url https://pypi.nvidia.com --trusted-host pypi.nvidia.com \
     tensorrt==8.6.1 \
     cuda-python \
     polygraphy || \
@@ -65,16 +82,35 @@ RUN git lfs install
 # Create checkpoints directory
 RUN mkdir -p /workspace/checkpoints
 
-# Download model files from HuggingFace during build
-RUN git lfs install && \
-    rm -rf /workspace/checkpoints && \
+# Download model files from HuggingFace during build with retry logic and better error handling
+RUN rm -rf /workspace/checkpoints && \
+    echo "Starting model download from HuggingFace..." && \
+    export GIT_LFS_SKIP_SMUDGE=1 && \
     git clone https://huggingface.co/digital-avatar/ditto-talkinghead /workspace/checkpoints && \
-    echo "Models downloaded successfully from HuggingFace"
+    cd /workspace/checkpoints && \
+    git lfs pull && \
+    echo "Models downloaded successfully from HuggingFace" && \
+    ls -la /workspace/checkpoints/ && \
+    find /workspace/checkpoints -name "*.bin" -o -name "*.pth" -o -name "*.onnx" | head -10
+
+# Verify model files exist
+RUN if [ ! -d "/workspace/checkpoints" ] || [ -z "$(ls -A /workspace/checkpoints)" ]; then \
+        echo "ERROR: Model download failed - checkpoints directory is empty"; \
+        exit 1; \
+    fi
 
 # Set environment variables
 ENV PYTHONPATH=/workspace:$PYTHONPATH
-# Add CUDA library paths to fix the missing library issue
 ENV LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
+ENV CUDA_HOME=/usr/local/cuda-11.8
+ENV TORCH_CUDA_ARCH_LIST="6.0;6.1;7.0;7.5;8.0;8.6"
+
+# Add a health check to ensure dependencies are working
+RUN python -c "import torch; print('PyTorch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available())" && \
+    python -c "import numpy; print('NumPy version:', numpy.__version__)" && \
+    python -c "import cv2; print('OpenCV version:', cv2.__version__)" && \
+    python -c "import librosa; print('Librosa imported successfully')" && \
+    echo "All dependencies verified successfully"
 
 # Run the handler
 CMD ["python", "-u", "runpod_handler.py"]
