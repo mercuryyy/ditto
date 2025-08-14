@@ -44,7 +44,6 @@ venv.bak/
 
 # Local development files
 web_ui_local.py
-requirements_local.txt
 *.local.*
 
 # Test files
