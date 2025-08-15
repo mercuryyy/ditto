@@ -31,15 +31,9 @@ class DittoStreamingWebUI:
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode()
     
-    def process_video_streaming(self, text, image, use_pytorch=False, enable_streaming=True, 
-                              max_size=1920, crop_scale=2.3, crop_vx_ratio=0.0, crop_vy_ratio=-0.125,
-                              emo=4, mouth_amplitude=1.0, head_amplitude=1.0, eye_amplitude=1.0,
-                              sampling_timesteps=50, smo_k_s=13, smo_k_d=3, fade_in=-1, fade_out=-1,
-                              online_mode=None, overlap_v2=10, delta_eye_open_n=0, 
-                              crop_flag_do_rot=True, relative_d=True, eye_f0_mode=False,
-                              fade_type="", template_n_frames=-1):
+    def process_video_streaming(self, text, image, use_pytorch=False, enable_streaming=True):
         """
-        Process video with streaming support and configurable settings
+        Process video with streaming support
         """
         if not text:
             gr.Warning("Please enter some text to synthesize.")
@@ -53,47 +47,12 @@ class DittoStreamingWebUI:
             # Prepare the request payload
             image_base64 = self.encode_image_to_base64(image)
             
-            # Prepare Ditto settings
-            ditto_settings = {
-                # Image/Avatar settings
-                "max_size": int(max_size),
-                "crop_scale": float(crop_scale),
-                "crop_vx_ratio": float(crop_vx_ratio),
-                "crop_vy_ratio": float(crop_vy_ratio),
-                "crop_flag_do_rot": bool(crop_flag_do_rot),
-                "template_n_frames": int(template_n_frames),
-                
-                # Motion/Animation settings
-                "emo": int(emo),
-                "sampling_timesteps": int(sampling_timesteps),
-                "smo_k_s": int(smo_k_s),
-                "smo_k_d": int(smo_k_d),
-                "relative_d": bool(relative_d),
-                "eye_f0_mode": bool(eye_f0_mode),
-                
-                # Advanced settings
-                "online_mode": online_mode if online_mode is not None else enable_streaming,
-                "overlap_v2": int(overlap_v2),
-                "delta_eye_open_n": int(delta_eye_open_n),
-                "fade_type": str(fade_type),
-                
-                # Fade settings
-                "fade_in": int(fade_in) if fade_in >= 0 else -1,
-                "fade_out": int(fade_out) if fade_out >= 0 else -1,
-                
-                # Amplitude controls
-                "mouth_amplitude": float(mouth_amplitude),
-                "head_amplitude": float(head_amplitude), 
-                "eye_amplitude": float(eye_amplitude),
-            }
-            
             payload = {
                 "input": {
                     "text": text,
                     "image_base64": image_base64,
                     "use_pytorch": use_pytorch,
-                    "streaming_mode": enable_streaming,
-                    "ditto_settings": ditto_settings
+                    "streaming_mode": enable_streaming
                 }
             }
             
@@ -294,144 +253,6 @@ class DittoStreamingWebUI:
                             value=True
                         )
                     
-                    # Advanced Settings Section
-                    with gr.Accordion("🎛️ Advanced Ditto Settings", open=False):
-                        gr.Markdown("### Image/Avatar Settings")
-                        with gr.Row():
-                            max_size = gr.Slider(
-                                minimum=512, maximum=2560, value=1920, step=128,
-                                label="Max Resolution",
-                                info="Higher = better quality, slower processing"
-                            )
-                            template_n_frames = gr.Slider(
-                                minimum=-1, maximum=100, value=-1, step=1,
-                                label="Template Frames",
-                                info="-1 = auto, >0 = fixed template frames"
-                            )
-                        
-                        gr.Markdown("### Cropping & Positioning")
-                        with gr.Row():
-                            crop_scale = gr.Slider(
-                                minimum=1.0, maximum=5.0, value=2.3, step=0.1,
-                                label="Crop Scale",
-                                info="How much to zoom into face"
-                            )
-                            crop_vx_ratio = gr.Slider(
-                                minimum=-0.5, maximum=0.5, value=0.0, step=0.01,
-                                label="Horizontal Offset",
-                                info="Adjust face position left/right"
-                            )
-                        
-                        with gr.Row():
-                            crop_vy_ratio = gr.Slider(
-                                minimum=-0.5, maximum=0.5, value=-0.125, step=0.01,
-                                label="Vertical Offset", 
-                                info="Adjust face position up/down"
-                            )
-                            crop_flag_do_rot = gr.Checkbox(
-                                label="Auto Rotation",
-                                info="Automatically rotate face to upright",
-                                value=True
-                            )
-                        
-                        gr.Markdown("### Motion & Animation Control")
-                        with gr.Row():
-                            emo = gr.Slider(
-                                minimum=0, maximum=7, value=4, step=1,
-                                label="Emotion Level",
-                                info="0=neutral, 4=default, 7=very expressive"
-                            )
-                            sampling_timesteps = gr.Slider(
-                                minimum=10, maximum=100, value=50, step=5,
-                                label="Sampling Steps",
-                                info="More steps = higher quality, slower"
-                            )
-                        
-                        gr.Markdown("### Amplitude Controls (Fix mouth/head movement)")
-                        with gr.Row():
-                            mouth_amplitude = gr.Slider(
-                                minimum=0.0, maximum=2.0, value=1.0, step=0.1,
-                                label="Mouth Movement",
-                                info="Control lip sync intensity"
-                            )
-                            head_amplitude = gr.Slider(
-                                minimum=0.0, maximum=2.0, value=1.0, step=0.1,
-                                label="Head Movement",
-                                info="Control head pose changes"
-                            )
-                        
-                        with gr.Row():
-                            eye_amplitude = gr.Slider(
-                                minimum=0.0, maximum=2.0, value=1.0, step=0.1,
-                                label="Eye Movement",
-                                info="Control eye expressions"
-                            )
-                            delta_eye_open_n = gr.Slider(
-                                minimum=-10, maximum=10, value=0, step=1,
-                                label="Eye Openness",
-                                info="Adjust default eye opening"
-                            )
-                        
-                        gr.Markdown("### Smoothing & Temporal")
-                        with gr.Row():
-                            smo_k_s = gr.Slider(
-                                minimum=1, maximum=25, value=13, step=2,
-                                label="Source Smoothing",
-                                info="Smooth source video temporal consistency"
-                            )
-                            smo_k_d = gr.Slider(
-                                minimum=1, maximum=15, value=3, step=1,
-                                label="Motion Smoothing", 
-                                info="Smooth generated motion"
-                            )
-                        
-                        gr.Markdown("### Advanced Processing")
-                        with gr.Row():
-                            overlap_v2 = gr.Slider(
-                                minimum=5, maximum=20, value=10, step=1,
-                                label="Audio Overlap",
-                                info="Audio chunk overlap for streaming"
-                            )
-                            online_mode = gr.Radio(
-                                choices=[("Auto", None), ("Force Online", True), ("Force Offline", False)],
-                                value=None,
-                                label="Processing Mode",
-                                info="Auto uses streaming preference"
-                            )
-                        
-                        gr.Markdown("### Fade Effects")
-                        with gr.Row():
-                            fade_in = gr.Slider(
-                                minimum=-1, maximum=50, value=-1, step=1,
-                                label="Fade In Frames",
-                                info="-1 = no fade, >0 = fade in duration"
-                            )
-                            fade_out = gr.Slider(
-                                minimum=-1, maximum=50, value=-1, step=1,
-                                label="Fade Out Frames",
-                                info="-1 = no fade, >0 = fade out duration"  
-                            )
-                        
-                        with gr.Row():
-                            fade_type = gr.Dropdown(
-                                choices=["", "d0", "s"],
-                                value="",
-                                label="Fade Type",
-                                info="Advanced fade behavior"
-                            )
-                            relative_d = gr.Checkbox(
-                                label="Relative Motion",
-                                info="Use relative motion calculations",
-                                value=True
-                            )
-                        
-                        with gr.Row():
-                            eye_f0_mode = gr.Checkbox(
-                                label="Eye F0 Mode",
-                                info="Special eye tracking for videos",
-                                value=False
-                            )
-                    
                     generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
                 
                 with gr.Column(scale=1):
@@ -470,74 +291,25 @@ class DittoStreamingWebUI:
             # Connect the generate button
             generate_btn.click(
                 fn=self.process_video_streaming,
-                inputs=[
-                    text_input, image_input, use_pytorch, enable_streaming,
-                    max_size, crop_scale, crop_vx_ratio, crop_vy_ratio,
-                    emo, mouth_amplitude, head_amplitude, eye_amplitude,
-                    sampling_timesteps, smo_k_s, smo_k_d, fade_in, fade_out,
-                    online_mode, overlap_v2, delta_eye_open_n,
-                    crop_flag_do_rot, relative_d, eye_f0_mode,
-                    fade_type, template_n_frames
-                ],
+                inputs=[text_input, image_input, use_pytorch, enable_streaming],
                 outputs=[video_output, status_display]
             )
             
             gr.Markdown(
                 """
                 ---
-                ### 🔧 Advanced Settings Guide:
-                
-                **🖼️ Image/Avatar Settings:**
-                - **Max Resolution**: Controls output quality vs processing speed (default: 1920px)
-                - **Template Frames**: -1 for auto-detection, >0 for fixed template length
-                
-                **✂️ Cropping & Positioning:**
-                - **Crop Scale**: How much to zoom into the face (2.3 = default balance)
-                - **Horizontal/Vertical Offset**: Fine-tune face positioning in frame
-                - **Auto Rotation**: Automatically straighten tilted faces
-                
-                **🎭 Motion & Animation:**
-                - **Emotion Level**: 0=neutral, 4=default, 7=very expressive
-                - **Sampling Steps**: More steps = higher quality but slower processing
-                
-                **🔧 Amplitude Controls** (Fix common issues):
-                - **Mouth Movement**: Reduce if lips move too much, increase if too subtle
-                - **Head Movement**: Control head nodding/turning intensity
-                - **Eye Movement**: Adjust eye expression changes
-                - **Eye Openness**: Fix eyes that appear too open/closed
-                
-                **⏱️ Temporal Smoothing:**
-                - **Source Smoothing**: Reduces jitter in source video (13 = good default)
-                - **Motion Smoothing**: Smooths generated motion (3 = balanced)
-                
-                **⚙️ Advanced Processing:**
-                - **Audio Overlap**: Chunk overlap for streaming (10 = optimal)
-                - **Processing Mode**: Auto/Online/Offline processing selection
-                
-                **🎬 Fade Effects:**
-                - **Fade In/Out**: Gradual opacity changes at video start/end
-                - **Fade Type**: Advanced fade behavior ("" = standard)
+                ### 🔧 Technical Notes:
+                - **Streaming Mode**: Uses online processing pipeline for faster results
+                - **Progress Updates**: Real-time feedback during video generation
+                - **Model Selection**: TensorRT is automatically selected when available
+                - **Timeout**: Maximum processing time is 5 minutes
+                - **GPU Requirements**: Best performance on RTX 3090 or A100 GPUs
                 
                 ### 📈 Performance Comparison:
-                | Mode | Speed | Progress Updates | Resource Usage | Best For |
-                |------|-------|------------------|----------------|----------|
-                | Streaming + TensorRT | Fastest | Yes | Optimized | RTX 3090+ |
-                | Streaming + PyTorch | Fast | Yes | Higher | Any GPU |
-                | Standard | Slower | No | Highest | High Quality |
-                
-                ### 🚨 Common Issues & Solutions:
-                - **Too much mouth movement**: Reduce Mouth Movement to 0.5-0.8
-                - **Head nods too much**: Reduce Head Movement to 0.5-0.7  
-                - **Eyes look wrong**: Adjust Eye Openness (-2 to +2) and Eye Movement
-                - **Low quality**: Increase Max Resolution and Sampling Steps
-                - **Face off-center**: Adjust Horizontal/Vertical Offset
-                - **Jerky motion**: Increase Source/Motion Smoothing values
-                
-                ### 💡 Pro Tips:
-                - Start with default settings, then adjust specific issues
-                - Higher resolution = better quality but slower processing
-                - Use Amplitude Controls to fix specific movement problems
-                - Streaming mode is faster for previewing, Standard for final output
+                | Mode | Speed | Progress Updates | Resource Usage |
+                |------|-------|------------------|----------------|
+                | Standard | Slower | No | Higher memory |
+                | Streaming | Faster | Yes | Optimized |
                 """
             )
         
@@ -587,3 +359,4 @@ if __name__ == "__main__":
     else:
         # Run with command line arguments
         main()
+

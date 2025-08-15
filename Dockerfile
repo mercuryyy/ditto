@@ -83,8 +83,13 @@ RUN pip install --no-cache-dir --index-url https://pypi.nvidia.com --trusted-hos
 # Copy the application code
 COPY . /workspace/
 
-# Copy streaming handler as the default handler
-COPY runpod_streaming_handler.py /workspace/runpod_handler.py
+# Copy the updated real-time streaming handler with direct audio support as the default handler
+COPY runpod_realtime_streaming_handler.py /workspace/runpod_handler.py
+
+# Install only essential dependencies for audio processing
+RUN pip install --no-cache-dir \
+    soundfile \
+    aiohttp
 
 # Install git lfs for model downloading
 RUN git lfs install

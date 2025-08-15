@@ -1,0 +1,17 @@
+# LiveKit Agents SDK with Deepgram STT + ElevenLabs TTS
+livekit-agents
+livekit-plugins-deepgram
+livekit-plugins-elevenlabs
+livekit-plugins-openai
+
+# Core dependencies
+livekit
+websockets
+aiohttp
+
+# Audio processing
+numpy
+soundfile
+
+# Logging and utilities
+python-dotenv

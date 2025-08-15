@@ -163,7 +163,7 @@ pip install -r requirements_webui.txt
 
 2. Set environment variables:
 ```bash
-export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/YOUR_ENDPOINT_ID"
+export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/s3ykrafvvtvyht"
 export RUNPOD_API_KEY="YOUR_API_KEY"
 ```
 
