@@ -22,24 +22,41 @@ async def test_runpod_avatar():
     
     print(f"📡 Using RunPod endpoint: {endpoint_id}")
     
-    # Load a test avatar image
-    avatar_path = "testv2/avatar_storage/74775662a536662e5da988582094621d.png"
+    # Load a test avatar image - check multiple possible paths
+    possible_paths = [
+        "avatar_storage/74775662a536662e5da988582094621d.png",  # When run from testv2/
+        "testv2/avatar_storage/74775662a536662e5da988582094621d.png",  # When run from project root
+        "../example/image.png",  # Fallback to example
+        "example/image.png"  # Another fallback
+    ]
     
-    if not os.path.exists(avatar_path):
-        # Use example image if avatar not found
-        avatar_path = "example/image.png"
+    avatar_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            avatar_path = path
+            break
     
-    if os.path.exists(avatar_path):
+    # If we still don't have a path, list available avatars and use the first one
+    if not avatar_path:
+        avatar_dir = "avatar_storage" if os.path.exists("avatar_storage") else "testv2/avatar_storage"
+        if os.path.exists(avatar_dir):
+            avatars = [f for f in os.listdir(avatar_dir) if f.endswith('.png')]
+            if avatars:
+                avatar_path = os.path.join(avatar_dir, avatars[0])
+                print(f"📂 Found {len(avatars)} avatars in {avatar_dir}, using: {avatars[0]}")
+    
+    if avatar_path and os.path.exists(avatar_path):
         print(f"🖼️ Loading avatar from: {avatar_path}")
+        file_size = os.path.getsize(avatar_path)
+        print(f"   File size: {file_size:,} bytes")
         with open(avatar_path, 'rb') as f:
             avatar_b64 = base64.b64encode(f.read()).decode('utf-8')
     else:
-        print("⚠️ No avatar image found, using a dummy base64 image")
-        # Create a simple 256x256 white image
-        import cv2
-        dummy_img = np.ones((256, 256, 3), dtype=np.uint8) * 255
-        _, buffer = cv2.imencode('.png', dummy_img)
-        avatar_b64 = base64.b64encode(buffer).decode('utf-8')
+        print("❌ No avatar image found! Available files in current directory:")
+        for item in os.listdir('.'):
+            print(f"   - {item}")
+        print("\nPlease ensure you have avatar images in the avatar_storage directory.")
+        return False
     
     # Create test audio chunks with actual audio data (sine wave to simulate speech)
     print("🎵 Creating test audio chunks with simulated speech...")
@@ -133,14 +150,30 @@ async def test_runpod_avatar():
                             results = output["stream_results"]
                             print(f"📊 Received {len(results)} streaming events")
                             
-                            # Count frame types
+                            # Count frame types and errors
                             frame_count = sum(1 for r in results if r.get("type") == "frame")
-                            print(f"🎬 Generated {frame_count} video frames")
+                            error_count = sum(1 for r in results if r.get("type") == "error")
                             
-                            # Show first few events
-                            for i, result in enumerate(results[:5]):
+                            print(f"🎬 Generated {frame_count} video frames")
+                            if error_count > 0:
+                                print(f"⚠️ Encountered {error_count} errors")
+                            
+                            # Show all events with details
+                            for i, result in enumerate(results):
                                 event_type = result.get("type", "unknown")
                                 print(f"  Event {i}: {event_type}")
+                                
+                                # Show error details if it's an error
+                                if event_type == "error":
+                                    error_msg = result.get("error", "Unknown error")
+                                    print(f"    Error: {error_msg}")
+                                    if "traceback" in result:
+                                        print(f"    Traceback (last line): {result['traceback'].splitlines()[-1]}")
+                            
+                            # Check if we actually generated frames
+                            if frame_count == 0 and error_count > 0:
+                                print("\n❌ No frames generated due to errors!")
+                                return False
                         else:
                             print("⚠️ No stream_results in output")
                             print(f"Output keys: {list(output.keys())}")

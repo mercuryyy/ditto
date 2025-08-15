@@ -194,10 +194,44 @@ async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, 
         
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Save the input image
+            # Save the input image - decode and save properly
             image_path = os.path.join(temp_dir, 'input_image.png')
-            with open(image_path, 'wb') as f:
-                f.write(base64.b64decode(image_base64))
+            image_data = base64.b64decode(image_base64)
+            
+            # Save using OpenCV to ensure proper PNG format
+            import numpy as np
+            from PIL import Image
+            import io
+            
+            # Load image from bytes
+            try:
+                # Try to load as image using PIL first
+                image = Image.open(io.BytesIO(image_data))
+                # Convert to RGB if needed (remove alpha channel)
+                if image.mode == 'RGBA':
+                    image = image.convert('RGB')
+                elif image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                # Save as PNG with proper headers
+                image.save(image_path, 'PNG')
+                
+                # Verify the file was created and is readable
+                if not os.path.exists(image_path):
+                    yield {"error": f"Failed to save image to {image_path}"}
+                    return
+                    
+                # Double-check with OpenCV that it can read it
+                test_img = cv2.imread(image_path)
+                if test_img is None:
+                    yield {"error": f"Image saved but cannot be read by OpenCV: {image_path}"}
+                    return
+                    
+                print(f"Image successfully saved to {image_path}, size: {test_img.shape}")
+                
+            except Exception as e:
+                yield {"error": f"Failed to decode/save image: {str(e)}"}
+                return
             
             # Select model (optimize for real-time)
             try:

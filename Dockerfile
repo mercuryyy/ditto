@@ -87,10 +87,11 @@ COPY . /workspace/
 # Copy the updated real-time streaming handler with direct audio support as the default handler
 COPY runpod_realtime_streaming_handler.py /workspace/runpod_handler.py
 
-# Install only essential dependencies for audio processing
+# Install only essential dependencies for audio processing and image handling
 RUN pip install --no-cache-dir \
     soundfile \
-    aiohttp
+    aiohttp \
+    Pillow
 
 # Install git lfs for model downloading
 RUN git lfs install
