@@ -114,16 +114,14 @@ curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
     }
   }'
 ```
-+525588902379
+### Example with request.json file:
 
-ST_aSQ1beEdAIPf
-
+```bash
 curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d @request.json
-
-/Users/israelcohen/Documents/Projects/Tools/lp/israelwhatsappleads.csv.png
+```
 
 ### Using Python:
 

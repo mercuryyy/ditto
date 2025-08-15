@@ -42,7 +42,15 @@ COPY requirements_local.txt /tmp/requirements_local.txt
 COPY requirements_webui.txt /tmp/requirements_webui.txt
 
 # Install core dependencies from requirements files with version compatibility fixes
+# Pin NumPy first to prevent any package from overriding the version
+RUN pip install --no-cache-dir "numpy>=1.24.0,<2.0.0"
+
+# Create constraints file for NumPy version
+RUN echo "numpy>=1.24.0,<2.0.0" > /tmp/constraints.txt
+
+# Install other core dependencies with NumPy constraint enforced
 RUN pip install --no-cache-dir \
+    --constraint /tmp/constraints.txt \
     librosa \
     tqdm \
     filetype \
@@ -54,11 +62,10 @@ RUN pip install --no-cache-dir \
     scipy \
     cython \
     colored \
-    "numpy>=1.24.0,<2.1.0" \
     runpod \
     pyttsx3 \
     gtts \
-    onnxruntime-gpu==1.15.1 \
+    onnxruntime-gpu==1.16.3 \
     mediapipe \
     einops \
     gradio==4.44.0 \
