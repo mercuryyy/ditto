@@ -1,6 +1,7 @@
 # RunPod automatically handles platform selection
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
+
 # Set working directory
 WORKDIR /workspace
 
