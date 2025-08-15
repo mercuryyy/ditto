@@ -21,8 +21,8 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, openai
 from livekit import rtc
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging - set to DEBUG for more detailed output
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -58,8 +58,8 @@ class RunPodAvatarSession:
         )
         
         # We'll publish this track when we get frames from RunPod
+        # Note: TrackPublishOptions doesn't have a 'name' parameter in newer versions
         await self.room.local_participant.publish_track(video_track, rtc.TrackPublishOptions(
-            name="liveportrait",
             source=rtc.TrackSource.SOURCE_CAMERA
         ))
         
@@ -68,11 +68,16 @@ class RunPodAvatarSession:
     
     async def generate_avatar_from_audio_chunks(self, audio_chunks: list) -> bool:
         """Generate avatar video from direct audio chunks for optimal lip-sync"""
-        if not self.is_active or not self.runpod_endpoint_id:
+        if not self.is_active:
+            logger.warning("Avatar session not active, skipping generation")
+            return False
+        if not self.runpod_endpoint_id:
+            logger.error("RunPod endpoint not configured")
             return False
             
         try:
             logger.info(f"🎬 Generating avatar from {len(audio_chunks)} audio chunks...")
+            logger.info(f"🔑 Using RunPod endpoint: {self.runpod_endpoint_id}")
             
             # Convert audio chunks to base64
             audio_chunks_b64 = []
@@ -109,16 +114,17 @@ class RunPodAvatarSession:
                 }
             }
             
-            # Call RunPod endpoint
+            # Call RunPod endpoint using /runsync for synchronous execution
             import aiohttp
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"https://api.runpod.ai/v2/{self.runpod_endpoint_id}/run",
+                    f"https://api.runpod.ai/v2/{self.runpod_endpoint_id}/runsync",
                     headers={
                         "Authorization": f"Bearer {self.runpod_api_key}",
                         "Content-Type": "application/json"
                     },
-                    json=payload
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)  # 30 second timeout
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -139,6 +145,8 @@ class RunPodAvatarSession:
     
     def add_audio_chunk(self, audio_data: np.ndarray):
         """Add audio chunk to buffer for processing"""
+        logger.debug(f"📊 Adding audio chunk: {len(audio_data)} samples")
+        
         if len(audio_data) != self.chunk_size:
             # Pad or truncate to correct size
             if len(audio_data) < self.chunk_size:
@@ -147,9 +155,11 @@ class RunPodAvatarSession:
                 audio_data = audio_data[:self.chunk_size]
         
         self.audio_buffer.append(audio_data)
+        logger.debug(f"📦 Audio buffer size: {len(self.audio_buffer)} chunks")
         
         # Process buffer when we have enough chunks for overlap
         if len(self.audio_buffer) >= 5:  # Process every 5 chunks (~320ms)
+            logger.info(f"🚀 Processing {len(self.audio_buffer)} audio chunks for avatar generation")
             asyncio.create_task(self.generate_avatar_from_audio_chunks(self.audio_buffer[-5:]))
     
     async def process_tts_audio_stream(self, audio_stream: AsyncIterator[rtc.AudioFrame]):
@@ -209,6 +219,17 @@ class DittoVoiceAssistant(Agent):
         # Start avatar session if available
         if self.avatar_session:
             await self.avatar_session.start()
+            
+            # TEST: Generate some test audio chunks to verify RunPod connection
+            logger.info("🧪 Testing avatar generation with dummy audio...")
+            test_chunks = []
+            for i in range(5):
+                # Create a dummy audio chunk (silence)
+                test_chunk = np.zeros(1024, dtype=np.float32)
+                test_chunks.append(test_chunk)
+            
+            # Try to generate avatar with test chunks
+            await self.avatar_session.generate_avatar_from_audio_chunks(test_chunks)
         
         # Greet the user
         await self.session.generate_reply(
@@ -251,22 +272,83 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Missing required environment variables: {missing_vars}")
         return
     
-    # Get avatar image from room metadata if available
-    avatar_image_b64 = None
-    if ctx.room.metadata:
-        try:
-            room_data = json.loads(ctx.room.metadata)
-            avatar_image_b64 = room_data.get("avatar_image_b64")
-        except json.JSONDecodeError:
-            pass
-    
-    # Create avatar session if image is available
+    # Initialize avatar_session as None - will be created when metadata is received
     avatar_session = None
-    if avatar_image_b64:
-        logger.info("🎭 Avatar image found, creating RunPod avatar session")
-        avatar_session = RunPodAvatarSession(ctx.room, avatar_image_b64)
-    else:
-        logger.info("⚠️ No avatar image provided, running in voice-only mode")
+    agent = None  # Will be initialized later
+    
+    # Function to check and initialize avatar from metadata
+    async def check_and_init_avatar():
+        nonlocal avatar_session, agent
+        if ctx.room.metadata and not avatar_session:
+            try:
+                logger.info(f"📝 Room metadata received: {ctx.room.metadata[:100]}...")
+                room_data = json.loads(ctx.room.metadata)
+                
+                # Check for avatar_id (new file storage approach)
+                avatar_id = room_data.get("avatar_id")
+                avatar_server = room_data.get("avatar_server", "http://localhost:3000")
+                
+                if avatar_id:
+                    logger.info(f"🔍 Avatar ID found: {avatar_id}, fetching from server...")
+                    
+                    # Fetch avatar from server
+                    import aiohttp
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(f"{avatar_server}/avatar/{avatar_id}") as response:
+                                if response.status == 200:
+                                    avatar_data = await response.json()
+                                    avatar_image_b64 = avatar_data.get("avatar_b64")
+                                    if avatar_image_b64:
+                                        logger.info("✅ Avatar fetched successfully from server")
+                                else:
+                                    logger.error(f"Failed to fetch avatar: HTTP {response.status}")
+                                    return False
+                    except Exception as e:
+                        logger.error(f"Error fetching avatar from server: {e}")
+                        return False
+                
+                # Fallback: check for direct avatar_image_b64 (old approach, kept for compatibility)
+                elif room_data.get("avatar_image_b64"):
+                    avatar_image_b64 = room_data.get("avatar_image_b64")
+                    logger.info("🎭 Avatar image found directly in metadata (legacy mode)")
+                else:
+                    return False
+                
+                if avatar_image_b64:
+                    logger.info("🎭 Creating RunPod avatar session with fetched image")
+                    avatar_session = RunPodAvatarSession(ctx.room, avatar_image_b64)
+                    await avatar_session.start()
+                    # Update the agent's avatar session if it exists
+                    if agent:
+                        agent.avatar_session = avatar_session
+                        logger.info("✅ Avatar session connected to agent")
+                    return True
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse room metadata: {e}")
+        return False
+    
+    # Initial check for metadata
+    if not await check_and_init_avatar():
+        logger.info("⚠️ No avatar image in initial metadata, will check for updates...")
+        
+        # Wait a bit and check again (metadata might be set after agent joins)
+        await asyncio.sleep(2.0)  # Give time for metadata to be set
+        if await check_and_init_avatar():
+            logger.info("✅ Avatar session initialized after delay")
+        else:
+            # Start a background task to periodically check for metadata
+            async def metadata_checker():
+                for _ in range(10):  # Check up to 10 times
+                    await asyncio.sleep(3.0)
+                    if await check_and_init_avatar():
+                        logger.info("✅ Avatar session initialized from periodic check")
+                        break
+                else:
+                    logger.warning("⚠️ No avatar metadata received after 30 seconds")
+            
+            asyncio.create_task(metadata_checker())
     
     # Create agent session with proper voice pipeline
     session = AgentSession(
@@ -290,20 +372,6 @@ async def entrypoint(ctx: JobContext):
     # Create the Ditto voice assistant with avatar integration
     agent = DittoVoiceAssistant(avatar_session)
     
-    # Custom session to intercept LLM responses
-    class AvatarIntegratedSession(AgentSession):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            
-        async def _handle_llm_response(self, text: str):
-            """Override to capture LLM responses for avatar generation"""
-            # Trigger avatar generation with LLM text
-            if hasattr(agent, 'avatar_session') and agent.avatar_session:
-                await agent.avatar_session.generate_avatar_from_text(text)
-            
-            # Continue with normal TTS processing
-            return await super()._handle_llm_response(text)
-    
     # Handle room events
     @ctx.room.on("participant_connected")
     def on_participant_connected(participant: rtc.RemoteParticipant):
@@ -312,6 +380,16 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("participant_disconnected") 
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
         logger.info(f"Participant left: {participant.identity}")
+    
+    # Listen for room metadata updates
+    @ctx.room.on("room_metadata_changed")
+    def on_room_metadata_changed(old_metadata: str, new_metadata: str):
+        logger.info("📝 Room metadata updated")
+        # Check if we can now initialize the avatar
+        async def check_metadata():
+            if await check_and_init_avatar():
+                logger.info("✅ Avatar session initialized from metadata update")
+        asyncio.create_task(check_metadata())
     
     # Start the agent session
     await session.start(

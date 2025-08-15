@@ -71,7 +71,8 @@ RUN pip install --no-cache-dir \
     gradio==4.44.0 \
     Pillow==10.3.0 \
     pydub==0.25.1 \
-    requests
+    requests \
+    nest-asyncio
 
 # Install TensorRT with better error handling and fallback
 RUN pip install --no-cache-dir --index-url https://pypi.nvidia.com --trusted-host pypi.nvidia.com \

@@ -1,6 +1,8 @@
 const express = require('express');
 const path = require('path');
 const dotenv = require('dotenv');
+const fs = require('fs').promises;
+const crypto = require('crypto');
 const { AccessToken } = require('livekit-server-sdk');
 
 // Load environment variables
@@ -8,6 +10,19 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Avatar storage directory
+const AVATAR_DIR = path.join(__dirname, 'avatar_storage');
+
+// Ensure avatar directory exists
+async function ensureAvatarDir() {
+    try {
+        await fs.mkdir(AVATAR_DIR, { recursive: true });
+    } catch (error) {
+        console.error('Failed to create avatar directory:', error);
+    }
+}
+ensureAvatarDir();
 
 // Middleware
 app.use(express.static('public'));
@@ -28,10 +43,18 @@ app.get('/health', (req, res) => {
 });
 
 // LiveKit token generation
-app.get('/token', (req, res) => {
+app.get('/token', async (req, res) => {
     try {
         const identity = req.query.identity || `web-${Date.now()}`;
         const room = req.query.room || 'liveportrait-test';
+        
+        // DEBUG: Log token generation details
+        console.log('\n🔐 Token Generation Request:');
+        console.log(`  Room: ${room}`);
+        console.log(`  Identity: ${identity}`);
+        console.log(`  Using API Key: ${process.env.LK_API_KEY}`);
+        console.log(`  Using API Secret: ${process.env.LK_API_SECRET}`);
+        console.log(`  Will connect to: ${process.env.LIVEKIT_URL}\n`);
         
         if (!process.env.LK_API_KEY || !process.env.LK_API_SECRET) {
             return res.status(500).json({ 
@@ -40,24 +63,46 @@ app.get('/token', (req, res) => {
             });
         }
 
-        const token = new AccessToken(
-            process.env.LK_API_KEY,
-            process.env.LK_API_SECRET,
-            {
-                identity,
-                // Token expires in 1 hour
-                ttl: '1h',
-            }
-        );
+        console.log('  Creating AccessToken with:');
+        console.log('    API Key:', process.env.LK_API_KEY);
+        console.log('    API Secret:', process.env.LK_API_SECRET);
+        
+        const at = new AccessToken(process.env.LK_API_KEY, process.env.LK_API_SECRET, {
+            identity: identity,
+            ttl: 60 * 60, // 1 hour in seconds
+        });
 
-        token.addGrant({
-            room,
+        console.log('  AccessToken created:', at ? 'YES' : 'NO');
+        
+        at.addGrant({
             roomJoin: true,
+            room: room,
             canPublish: true,
             canSubscribe: true,
         });
-
-        const jwt = token.toJwt();
+        
+        console.log('  Grant added');
+        
+        // toJwt() returns a Promise, so we need to await it
+        console.log('  Calling toJwt() (async)...');
+        const jwt = await at.toJwt();
+        
+        console.log('  JWT generated successfully');
+        console.log('  JWT type:', typeof jwt);
+        
+        // DEBUG: Log the generated token (safely)
+        if (typeof jwt === 'string' && jwt.length > 0) {
+            console.log(`  Generated JWT (first 50 chars): ${jwt.substring(0, 50)}...`);
+            console.log(`  JWT length: ${jwt.length} characters`);
+        } else {
+            console.log(`  JWT is not a valid string! Type: ${typeof jwt}, Value:`, jwt);
+        }
+        
+        if (!jwt || jwt === '{}' || typeof jwt !== 'string') {
+            console.error('❌ Token generation failed! JWT is not a valid string.');
+            console.error('  Received:', jwt);
+            throw new Error('Failed to generate valid JWT token');
+        }
         
         res.json({ 
             token: jwt,
@@ -71,6 +116,30 @@ app.get('/token', (req, res) => {
         res.status(500).json({ 
             error: 'Failed to generate token',
             details: error.message 
+        });
+    }
+});
+
+// Get avatar endpoint
+app.get('/avatar/:id', async (req, res) => {
+    try {
+        const avatarPath = path.join(AVATAR_DIR, `${req.params.id}.png`);
+        
+        // Check if file exists
+        await fs.access(avatarPath);
+        
+        // Read and return the base64 avatar
+        const avatarData = await fs.readFile(avatarPath, 'utf8');
+        res.json({ 
+            avatar_id: req.params.id,
+            avatar_b64: avatarData 
+        });
+        
+    } catch (error) {
+        console.error('Avatar retrieval error:', error);
+        res.status(404).json({ 
+            error: 'Avatar not found',
+            details: `Avatar ID ${req.params.id} does not exist` 
         });
     }
 });
@@ -119,6 +188,15 @@ app.post('/start-lp', async (req, res) => {
             });
         }
 
+        // Generate unique avatar ID
+        const avatarId = crypto.randomBytes(16).toString('hex');
+        const avatarPath = path.join(AVATAR_DIR, `${avatarId}.png`);
+        
+        // Save avatar to file system
+        await fs.writeFile(avatarPath, avatar_b64, 'utf8');
+        console.log(`💾 Avatar saved to file system with ID: ${avatarId}`);
+        console.log(`   Size: ${Buffer.from(avatar_b64).length} bytes (base64)`);
+
         // Prepare optimized settings for RunPod
         const dittoSettings = {
             max_size,
@@ -146,8 +224,10 @@ app.post('/start-lp', async (req, res) => {
         const { RoomServiceClient } = require('livekit-server-sdk');
         const roomService = new RoomServiceClient(process.env.LIVEKIT_URL, process.env.LK_API_KEY, process.env.LK_API_SECRET);
         
+        // Now we only pass the avatar ID in metadata (much smaller!)
         const roomMetadata = JSON.stringify({
-            avatar_image_b64: avatar_b64,
+            avatar_id: avatarId,
+            avatar_server: `http://localhost:${PORT}`,  // So agent knows where to fetch from
             ditto_settings: dittoSettings,
             created_at: new Date().toISOString()
         });
@@ -155,7 +235,8 @@ app.post('/start-lp', async (req, res) => {
         try {
             // Update room metadata with avatar information
             await roomService.updateRoomMetadata(room, roomMetadata);
-            console.log(`📝 Room ${room} metadata updated with avatar data`);
+            console.log(`📝 Room ${room} metadata updated with avatar ID: ${avatarId}`);
+            console.log(`   Metadata size: ${roomMetadata.length} bytes (well under 64KB limit!)`);
         } catch (roomError) {
             console.warn('Room metadata update failed:', roomError.message);
             // Continue - the agent can still work without metadata
@@ -165,6 +246,7 @@ app.post('/start-lp', async (req, res) => {
             status: 'room_configured',
             room: room,
             identity: identity,
+            avatar_id: avatarId,
             optimization_settings: dittoSettings,
             message: 'LiveKit room configured for avatar integration - agent will handle RunPod processing'
         });
@@ -235,4 +317,15 @@ app.listen(PORT, () => {
     console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🎯 LiveKit: ${process.env.LIVEKIT_URL ? 'configured' : 'not configured'}`);
     console.log(`⚡ RunPod: ${process.env.RUNPOD_ENDPOINT_ID ? 'configured' : 'not configured'}`);
+    
+    // DEBUG: Display LiveKit credentials for verification
+    console.log('\n========================================');
+    console.log('🔐 DEBUG - LiveKit Credentials (for meet.livekit.io testing):');
+    console.log('========================================');
+    console.log(`📍 URL: ${process.env.LIVEKIT_URL || 'NOT SET'}`);
+    console.log(`🔑 API Key: ${process.env.LK_API_KEY || 'NOT SET'}`);
+    console.log(`🔒 API Secret: ${process.env.LK_API_SECRET || 'NOT SET'}`);
+    console.log('========================================');
+    console.log('⚠️  SECURITY WARNING: Remove this debug code in production!');
+    console.log('========================================\n');
 });

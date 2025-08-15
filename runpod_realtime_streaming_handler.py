@@ -424,7 +424,7 @@ def websocket_streaming_handler(job: Dict[str, Any]) -> Dict[str, Any]:
 def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     """Main RunPod handler with real-time streaming support"""
     job_input = job.get('input', {})
-    mode = job_input.get('mode', 'realtime')  # Default to realtime mode
+    mode = job_input.get('mode', 'batch')  # batch, realtime, websocket
     
     if mode == 'realtime':
         # Real-time streaming mode - run async handler
@@ -434,8 +434,17 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
                 results.append(frame_result)
             return results
         
-        # Use asyncio to run the async generator
-        results = asyncio.run(run_streaming())
+        # Check if we're already in an event loop
+        import asyncio
+        import nest_asyncio
+        nest_asyncio.apply()  # Allow nested event loops
+        
+        # Run the async handler
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(run_streaming())
+        loop.close()
+        
         return {"stream_results": results, "mode": "realtime"}
     
     elif mode == 'websocket':
@@ -444,14 +453,25 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     
     else:
         # Default to realtime mode for batch requests
+        job_input['mode'] = 'realtime'  # Force realtime mode
+        
         async def run_streaming():
             results = []
             async for frame_result in realtime_streaming_handler(job):
                 results.append(frame_result)
             return results
         
-        results = asyncio.run(run_streaming())
-        return {"stream_results": results, "mode": "batch_processed_as_realtime"}
+        # Use nest_asyncio for compatibility
+        import asyncio
+        import nest_asyncio
+        nest_asyncio.apply()
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(run_streaming())
+        loop.close()
+        
+        return {"stream_results": results, "mode": "realtime"}
 
 
 # RunPod serverless handler
