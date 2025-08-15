@@ -424,7 +424,7 @@ def websocket_streaming_handler(job: Dict[str, Any]) -> Dict[str, Any]:
 def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     """Main RunPod handler with real-time streaming support"""
     job_input = job.get('input', {})
-    mode = job_input.get('mode', 'batch')  # batch, realtime, websocket
+    mode = job_input.get('mode', 'realtime')  # Default to realtime mode
     
     if mode == 'realtime':
         # Real-time streaming mode - run async handler
@@ -443,9 +443,15 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         return websocket_streaming_handler(job)
     
     else:
-        # Fall back to existing batch handler
-        from runpod_streaming_handler import streaming_handler
-        return streaming_handler(job)
+        # Default to realtime mode for batch requests
+        async def run_streaming():
+            results = []
+            async for frame_result in realtime_streaming_handler(job):
+                results.append(frame_result)
+            return results
+        
+        results = asyncio.run(run_streaming())
+        return {"stream_results": results, "mode": "batch_processed_as_realtime"}
 
 
 # RunPod serverless handler
