@@ -117,7 +117,7 @@ curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
 ### Example with request.json file:
 
 ```bash
-curl -X POST https://api.runpod.ai/v2/6tz3g3hg3tq4n6/run \
+curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d @request.json
@@ -154,6 +154,8 @@ print(response.json())
 
 ## Step 4: Run the Web UI
 
+### Standard Web UI
+
 1. Install dependencies:
 ```bash
 pip install -r requirements_webui.txt
@@ -161,8 +163,8 @@ pip install -r requirements_webui.txt
 
 2. Set environment variables:
 ```bash
-export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/6tz3g3hg3tq4n6"
-export RUNPOD_API_KEY="zzz"
+export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/YOUR_ENDPOINT_ID"
+export RUNPOD_API_KEY="YOUR_API_KEY"
 ```
 
 3. Run the web UI:
@@ -178,6 +180,43 @@ python web_ui.py \
 ```
 
 4. Open your browser to `http://localhost:7860`
+
+### 🚀 Streaming Web UI (Recommended)
+
+For **faster video generation** with real-time progress updates:
+
+1. Install streaming dependencies:
+```bash
+pip install -r requirements_streaming.txt
+```
+
+2. Set environment variables (same as above):
+```bash
+export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/YOUR_ENDPOINT_ID"
+export RUNPOD_API_KEY="YOUR_API_KEY"
+```
+
+3. Run the streaming web UI:
+```bash
+python web_ui_streaming.py
+```
+
+Or with command line arguments:
+```bash
+python web_ui_streaming.py \
+  --runpod-endpoint "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID" \
+  --runpod-api-key "YOUR_API_KEY"
+```
+
+4. Open your browser to `http://localhost:7860`
+
+### ⚡ Streaming Features:
+
+- **Real-time Progress Updates**: See processing status and completion percentage
+- **Faster Processing**: Uses optimized online pipeline for quicker results
+- **Better User Experience**: No more waiting in the dark - get updates every step
+- **Automatic Fallback**: Seamlessly falls back to standard mode if needed
+- **Progress Tracking**: Visual feedback on frame generation progress
 
 ## Benefits of GitHub Repository Deployment
 

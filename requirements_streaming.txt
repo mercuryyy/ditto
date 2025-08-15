@@ -1,0 +1,9 @@
+# Streaming Web UI Requirements
+# Core Gradio and web dependencies
+gradio==4.44.0
+requests==2.31.0
+Pillow==10.3.0
+
+# Additional streaming support
+opencv-python-headless==4.8.1.78
+numpy>=1.24.0,<2.0.0

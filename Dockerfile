@@ -83,6 +83,9 @@ RUN pip install --no-cache-dir --index-url https://pypi.nvidia.com --trusted-hos
 # Copy the application code
 COPY . /workspace/
 
+# Copy streaming handler as the default handler
+COPY runpod_streaming_handler.py /workspace/runpod_handler.py
+
 # Install git lfs for model downloading
 RUN git lfs install
 
