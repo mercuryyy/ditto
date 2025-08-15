@@ -151,22 +151,31 @@ class AudioChunkProcessor:
     def __init__(self, sdk: RealTimeStreamingSDK):
         self.sdk = sdk
         self.audio_buffer = np.array([], dtype=np.float32)
-        self.chunk_size = 1024  # 64ms at 16kHz
+        # Use larger chunk size for HuBERT feature extraction
+        # Based on official code: overlap_v2 * 640 (typically 10 * 640 = 6400)
+        self.chunk_size = 6400  # 400ms at 16kHz - proper size for HuBERT
         self.sample_rate = 16000
+        self.chunks_processed = 0
         
     def add_audio_chunk(self, audio_chunk: np.ndarray):
         """Add audio chunk and process if enough data available"""
         # Add to buffer
         self.audio_buffer = np.concatenate([self.audio_buffer, audio_chunk])
         
-        # Process if we have enough audio
+        # Process when we have enough audio for HuBERT
         while len(self.audio_buffer) >= self.chunk_size:
             # Extract chunk
             chunk = self.audio_buffer[:self.chunk_size]
             self.audio_buffer = self.audio_buffer[self.chunk_size:]
             
-            # Process chunk through Ditto pipeline
-            self.sdk.run_chunk(chunk)
+            # Process chunk through Ditto pipeline with default chunksize for HuBERT
+            try:
+                # Use the default chunksize parameter that HuBERT expects
+                self.sdk.run_chunk(chunk, chunksize=(3, 5, 2))
+                self.chunks_processed += 1
+                print(f"Processed audio chunk {self.chunks_processed} (size: {len(chunk)})")
+            except Exception as e:
+                print(f"Error processing chunk: {e}")
 
 
 async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:

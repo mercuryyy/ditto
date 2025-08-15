@@ -24,7 +24,7 @@ async def test_runpod_avatar():
     
     # Load a test avatar image - check multiple possible paths
     possible_paths = [
-        "avatar_storage/74775662a536662e5da988582094621d.png",  # When run from testv2/
+        "/Users/israelcohen/Downloads/israelwhatsappleads.csv-min.png",  # When run from testv2/
         "testv2/avatar_storage/74775662a536662e5da988582094621d.png",  # When run from project root
         "../example/image.png",  # Fallback to example
         "example/image.png"  # Another fallback
@@ -82,11 +82,11 @@ async def test_runpod_avatar():
     print("🎵 Creating test audio chunks with simulated speech...")
     audio_chunks_b64 = []
     sample_rate = 16000
-    chunk_size = 1024  # 64ms at 16kHz
+    chunk_size = 6400  # 400ms at 16kHz - proper size for HuBERT processing
     duration_per_chunk = chunk_size / sample_rate
     
-    # Generate 10 chunks (~640ms of audio) with varying frequencies to simulate speech
-    for i in range(10):
+    # Generate 3 chunks (~1.2 seconds of audio) with varying frequencies to simulate speech
+    for i in range(3):
         # Create a sine wave with varying frequency (simulating voice pitch variations)
         time = np.linspace(i * duration_per_chunk, (i + 1) * duration_per_chunk, chunk_size)
         
