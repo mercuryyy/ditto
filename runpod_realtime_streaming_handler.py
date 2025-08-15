@@ -169,11 +169,7 @@ class AudioChunkProcessor:
             self.sdk.run_chunk(chunk)
 
 
-<<<<<<< HEAD
 async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
-=======
-def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
     """
     Real-time streaming handler that yields frames as they're generated
     """
@@ -182,28 +178,20 @@ def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
         
         # Extract inputs
         image_base64 = job_input.get('image_base64', '')
-<<<<<<< HEAD
         audio_chunks_base64 = job_input.get('audio_chunks_base64', [])  # Direct audio chunks
         full_audio_base64 = job_input.get('full_audio_base64', '')  # Fallback for batch mode
         ditto_settings = job_input.get('ditto_settings', {})
         stream_mode = job_input.get('stream_mode', 'chunks')  # chunks, websocket, or batch
-=======
-        ditto_settings = job_input.get('ditto_settings', {})
-        stream_mode = job_input.get('stream_mode', 'websocket')  # websocket or rtmp
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
         
         if not image_base64:
             yield {"error": "Missing required input: image_base64"}
             return
         
-<<<<<<< HEAD
         # Check for either chunked audio or full audio
         if not audio_chunks_base64 and not full_audio_base64:
             yield {"error": "Missing required input: audio_chunks_base64 or full_audio_base64"}
             return
         
-=======
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
         # Create temporary directory for processing
         with tempfile.TemporaryDirectory() as temp_dir:
             # Save the input image
@@ -238,7 +226,6 @@ def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
             # Initialize real-time streaming SDK
             SDK = RealTimeStreamingSDK(cfg_pkl, data_root)
             
-<<<<<<< HEAD
             # Optimized settings for chunked audio processing with quality lip-sync
             realtime_kwargs = {
                 "online_mode": True,
@@ -250,19 +237,6 @@ def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
                 "smo_k_s": ditto_settings.get("smo_k_s", 7),  # Higher smoothing for quality
                 "smo_k_d": ditto_settings.get("smo_k_d", 3),  # More temporal smoothing
                 "overlap_v2": ditto_settings.get("overlap_v2", 5),  # Higher overlap for continuity
-=======
-            # Real-time optimized settings
-            realtime_kwargs = {
-                "online_mode": True,
-                "max_size": ditto_settings.get("max_size", 512),  # Smaller for speed
-                "sampling_timesteps": ditto_settings.get("sampling_timesteps", 20),  # Faster
-                "crop_scale": ditto_settings.get("crop_scale", 2.3),
-                "crop_vx_ratio": ditto_settings.get("crop_vx_ratio", 0.0),
-                "crop_vy_ratio": ditto_settings.get("crop_vy_ratio", -0.125),
-                "smo_k_s": ditto_settings.get("smo_k_s", 3),  # Minimal smoothing for real-time
-                "smo_k_d": ditto_settings.get("smo_k_d", 1),  # Minimal smoothing
-                "overlap_v2": ditto_settings.get("overlap_v2", 2),  # Minimal overlap
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
                 "emo": ditto_settings.get("emo", 3),
                 "relative_d": ditto_settings.get("relative_d", True),
             }
@@ -294,7 +268,6 @@ def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
             # Send ready signal
             yield {
                 "type": "ready",
-<<<<<<< HEAD
                 "message": "Real-time streaming initialized. Processing audio input.",
                 "status": "ready"
             }
@@ -412,40 +385,6 @@ def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
                     "status": "error"
                 }
                 return
-=======
-                "message": "Real-time streaming initialized. Send audio chunks.",
-                "status": "ready"
-            }
-            
-            # Wait for audio chunks (this would be handled by WebSocket in production)
-            # For now, we'll process a demo audio file if provided
-            demo_audio = job_input.get('demo_audio_base64')
-            if demo_audio:
-                # Decode demo audio
-                audio_data = base64.b64decode(demo_audio)
-                with open(os.path.join(temp_dir, 'demo_audio.wav'), 'wb') as f:
-                    f.write(audio_data)
-                
-                # Load and process in chunks
-                audio, sr = librosa.core.load(os.path.join(temp_dir, 'demo_audio.wav'), sr=16000)
-                
-                # Setup frame count
-                num_f = math.ceil(len(audio) / 16000 * 25)
-                SDK.setup_Nd(N_d=num_f, fade_in=-1, fade_out=-1, ctrl_info={})
-                
-                # Process in real-time chunks
-                chunk_size = 1024  # ~64ms chunks
-                for i in range(0, len(audio), chunk_size):
-                    audio_chunk = audio[i:i + chunk_size]
-                    if len(audio_chunk) < chunk_size:
-                        audio_chunk = np.pad(audio_chunk, (0, chunk_size - len(audio_chunk)), mode="constant")
-                    
-                    # Process chunk (will trigger frame streaming via callback)
-                    audio_processor.add_audio_chunk(audio_chunk)
-                    
-                    # Small delay to simulate real-time
-                    time.sleep(chunk_size / 16000)  # Wait for real-time duration
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
             
             # Close SDK
             SDK.close()
@@ -488,7 +427,6 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     mode = job_input.get('mode', 'batch')  # batch, realtime, websocket
     
     if mode == 'realtime':
-<<<<<<< HEAD
         # Real-time streaming mode - run async handler
         async def run_streaming():
             results = []
@@ -498,12 +436,6 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         
         # Use asyncio to run the async generator
         results = asyncio.run(run_streaming())
-=======
-        # Real-time streaming mode
-        results = []
-        for frame_result in realtime_streaming_handler(job):
-            results.append(frame_result)
->>>>>>> 077f319a1838990c9898bb2418142f6e0614d4d1
         return {"stream_results": results, "mode": "realtime"}
     
     elif mode == 'websocket':
