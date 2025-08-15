@@ -49,8 +49,28 @@ async def test_runpod_avatar():
         print(f"🖼️ Loading avatar from: {avatar_path}")
         file_size = os.path.getsize(avatar_path)
         print(f"   File size: {file_size:,} bytes")
-        with open(avatar_path, 'rb') as f:
-            avatar_b64 = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Verify the image can be loaded before encoding
+        try:
+            from PIL import Image
+            # Open and verify the image
+            with Image.open(avatar_path) as img:
+                print(f"   Image size: {img.size}, mode: {img.mode}")
+                # Convert to RGB if needed (remove alpha channel)
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Save to bytes and encode
+                import io
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                avatar_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                print(f"   Base64 encoded: {len(avatar_b64)} characters")
+        except Exception as e:
+            print(f"❌ Failed to load/process image: {e}")
+            return False
     else:
         print("❌ No avatar image found! Available files in current directory:")
         for item in os.listdir('.'):

@@ -205,32 +205,59 @@ async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, 
             
             # Load image from bytes
             try:
-                # Try to load as image using PIL first
-                image = Image.open(io.BytesIO(image_data))
-                # Convert to RGB if needed (remove alpha channel)
-                if image.mode == 'RGBA':
-                    image = image.convert('RGB')
-                elif image.mode != 'RGB':
-                    image = image.convert('RGB')
+                # First, try to save the raw bytes directly to file
+                # This often works better than going through PIL
+                with open(image_path, 'wb') as f:
+                    f.write(image_data)
                 
-                # Save as PNG with proper headers
-                image.save(image_path, 'PNG')
-                
-                # Verify the file was created and is readable
-                if not os.path.exists(image_path):
-                    yield {"error": f"Failed to save image to {image_path}"}
-                    return
-                    
-                # Double-check with OpenCV that it can read it
+                # Now verify the file is a valid image using OpenCV
                 test_img = cv2.imread(image_path)
                 if test_img is None:
-                    yield {"error": f"Image saved but cannot be read by OpenCV: {image_path}"}
+                    # If OpenCV can't read it, try to fix it with PIL
+                    print(f"OpenCV couldn't read image, trying PIL conversion...")
+                    
+                    # Load with PIL and re-save
+                    from PIL import Image
+                    image = Image.open(image_path)
+                    
+                    # Convert to RGB if needed
+                    if image.mode == 'RGBA':
+                        image = image.convert('RGB')
+                    elif image.mode != 'RGB':
+                        image = image.convert('RGB')
+                    
+                    # Save back with proper format
+                    image.save(image_path, 'PNG')
+                    
+                    # Try OpenCV again
+                    test_img = cv2.imread(image_path)
+                    if test_img is None:
+                        yield {"error": f"Image saved but still cannot be read: {image_path}"}
+                        return
+                
+                # Check if the image has a face (basic check)
+                h, w = test_img.shape[:2]
+                if h < 64 or w < 64:
+                    yield {"error": f"Image too small: {w}x{h}, minimum 64x64 required"}
                     return
                     
                 print(f"Image successfully saved to {image_path}, size: {test_img.shape}")
                 
+                # Additional debug info
+                import filetype
+                kind = filetype.guess(image_path)
+                if kind is None:
+                    print(f"Warning: filetype couldn't identify the file type")
+                else:
+                    print(f"File type detected: {kind.mime}")
+                
             except Exception as e:
-                yield {"error": f"Failed to decode/save image: {str(e)}"}
+                import traceback
+                yield {
+                    "error": f"Failed to process image: {str(e)}",
+                    "traceback": traceback.format_exc(),
+                    "status": "error"
+                }
                 return
             
             # Select model (optimize for real-time)
