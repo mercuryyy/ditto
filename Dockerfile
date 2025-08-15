@@ -4,6 +4,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 # Set working directory
 WORKDIR /workspace
 
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \
