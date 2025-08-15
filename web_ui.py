@@ -8,11 +8,10 @@ import gradio as gr
 from PIL import Image
 import io
 import tempfile
-from typing import Optional
 
 
 class DittoWebUI:
-    def __init__(self, runpod_endpoint: str, runpod_api_key: str):
+    def __init__(self, runpod_endpoint, runpod_api_key):
         """
         Initialize the Web UI
         
@@ -26,29 +25,25 @@ class DittoWebUI:
             "Content-Type": "application/json"
         }
     
-    def encode_image_to_base64(self, image: Image.Image) -> str:
+    def encode_image_to_base64(self, image):
         """Convert PIL Image to base64 string"""
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode()
     
-    def process_video(self, text: str, image: Optional[Image.Image], use_pytorch: bool = False) -> str:
+    def process_video(self, text, image, use_pytorch=False):
         """
         Process the video generation request
         
-        Args:
-            text: Text to synthesize
-            image: Input image
-            use_pytorch: Whether to use PyTorch model (vs TensorRT)
-        
-        Returns:
-            Path to the generated video file
+        Returns just the video path or None
         """
         if not text:
-            return "Please enter some text to synthesize."
+            gr.Warning("Please enter some text to synthesize.")
+            return None
         
         if image is None:
-            return "Please upload an image."
+            gr.Warning("Please upload an image.")
+            return None
         
         try:
             # Prepare the request payload
@@ -63,6 +58,7 @@ class DittoWebUI:
             }
             
             # Send request to RunPod endpoint
+            gr.Info("Sending request to RunPod...")
             response = requests.post(
                 f"{self.runpod_endpoint}/run",
                 json=payload,
@@ -71,13 +67,15 @@ class DittoWebUI:
             )
             
             if response.status_code != 200:
-                return f"Error: Failed to connect to RunPod endpoint. Status: {response.status_code}"
+                gr.Error(f"Failed to connect to RunPod endpoint. Status: {response.status_code}")
+                return None
             
             result = response.json()
             
             # Check if the job was queued (async processing)
             if "id" in result:
                 job_id = result["id"]
+                gr.Info(f"Job queued with ID: {job_id}. Polling for completion...")
                 # Poll for job completion
                 return self.poll_job_status(job_id)
             
@@ -85,14 +83,17 @@ class DittoWebUI:
             if "output" in result:
                 return self.process_output(result["output"])
             
-            return "Error: Unexpected response format from RunPod"
+            gr.Error("Unexpected response format from RunPod")
+            return None
             
         except requests.exceptions.Timeout:
-            return "Error: Request timed out. The video generation is taking too long."
+            gr.Error("Request timed out. The video generation is taking too long.")
+            return None
         except Exception as e:
-            return f"Error: {str(e)}"
+            gr.Error(f"Error: {str(e)}")
+            return None
     
-    def poll_job_status(self, job_id: str, max_attempts: int = 60) -> str:
+    def poll_job_status(self, job_id, max_attempts=60):
         """Poll RunPod for job completion"""
         import time
         
@@ -104,33 +105,43 @@ class DittoWebUI:
                 )
                 
                 if response.status_code != 200:
-                    return f"Error: Failed to check job status. Status: {response.status_code}"
+                    gr.Error(f"Failed to check job status. Status: {response.status_code}")
+                    return None
                 
                 result = response.json()
                 status = result.get("status")
                 
                 if status == "COMPLETED":
+                    gr.Info("Job completed successfully!")
                     return self.process_output(result.get("output", {}))
                 elif status == "FAILED":
                     error_msg = result.get("error", "Unknown error")
-                    return f"Error: Job failed - {error_msg}"
+                    gr.Error(f"Job failed: {error_msg}")
+                    return None
                 elif status in ["IN_QUEUE", "IN_PROGRESS"]:
+                    if attempt % 3 == 0:  # Update every 15 seconds
+                        gr.Info(f"Job {status}... (attempt {attempt+1}/{max_attempts})")
                     time.sleep(5)  # Wait 5 seconds before checking again
                 else:
-                    return f"Error: Unknown job status - {status}"
+                    gr.Error(f"Unknown job status: {status}")
+                    return None
                     
             except Exception as e:
-                return f"Error checking job status: {str(e)}"
+                gr.Error(f"Error checking job status: {str(e)}")
+                return None
         
-        return "Error: Job timed out after 5 minutes"
+        gr.Error("Job timed out after 5 minutes")
+        return None
     
-    def process_output(self, output: dict) -> str:
+    def process_output(self, output):
         """Process the output from RunPod"""
         if "error" in output:
-            return f"Error from RunPod: {output['error']}"
+            gr.Error(f"Error from RunPod: {output['error']}")
+            return None
         
         if "video_base64" not in output:
-            return "Error: No video data in response"
+            gr.Error("No video data in response")
+            return None
         
         try:
             # Decode the video from base64
@@ -139,14 +150,16 @@ class DittoWebUI:
             # Save to temporary file
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
                 tmp_file.write(video_data)
+                gr.Info("Video generated successfully!")
                 return tmp_file.name
                 
         except Exception as e:
-            return f"Error processing video: {str(e)}"
+            gr.Error(f"Error processing video: {str(e)}")
+            return None
     
     def launch(self):
         """Launch the Gradio interface"""
-        with gr.Blocks(title="Ditto Talking Head Web UI") as interface:
+        with gr.Blocks(title="Ditto Talking Head Web UI", theme=gr.themes.Soft()) as interface:
             gr.Markdown(
                 """
                 # 🎭 Ditto Talking Head Web UI
@@ -171,8 +184,7 @@ class DittoWebUI:
                     
                     image_input = gr.Image(
                         label="Upload Portrait Image",
-                        type="pil",
-                        height=300
+                        type="pil"
                     )
                     
                     use_pytorch = gr.Checkbox(
@@ -180,31 +192,23 @@ class DittoWebUI:
                         value=False
                     )
                     
-                    generate_btn = gr.Button("🎬 Generate Video", variant="primary")
+                    generate_btn = gr.Button("🎬 Generate Video", variant="primary", size="lg")
                 
                 with gr.Column(scale=1):
                     video_output = gr.Video(
-                        label="Generated Video",
-                        height=400
-                    )
-                    
-                    status_text = gr.Textbox(
-                        label="Status",
-                        interactive=False,
-                        visible=False
+                        label="Generated Video"
                     )
             
-            # Example inputs
-            gr.Examples(
-                examples=[
-                    ["Hello! I am a digital avatar created with the Ditto talking head model. This is an amazing AI technology!", None, False],
-                    ["Welcome to the future of AI-powered video generation. With Ditto, you can create realistic talking head videos from just a single image!", None, False],
-                ],
-                inputs=[text_input, image_input, use_pytorch],
-                label="Example Texts"
+            # Example texts for reference
+            gr.Markdown(
+                """
+                ### Example texts you can try:
+                - "Hello! I am a digital avatar created with the Ditto talking head model. This is an amazing AI technology!"
+                - "Welcome to the future of AI-powered video generation. With Ditto, you can create realistic talking head videos from just a single image!"
+                """
             )
             
-            # Connect the generate button
+            # Connect the generate button - single output only
             generate_btn.click(
                 fn=self.process_video,
                 inputs=[text_input, image_input, use_pytorch],
@@ -219,6 +223,7 @@ class DittoWebUI:
                 - Video generation typically takes 30-60 seconds depending on text length
                 - For best results, use a clear portrait image with the face clearly visible
                 - The TensorRT model is faster but requires compatible GPU architecture
+                - Status updates will appear as notifications at the top of the screen
                 """
             )
         

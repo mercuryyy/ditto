@@ -117,7 +117,7 @@ curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
 ### Example with request.json file:
 
 ```bash
-curl -X POST https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/run \
+curl -X POST https://api.runpod.ai/v2/6tz3g3hg3tq4n6/run \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d @request.json
@@ -161,8 +161,8 @@ pip install -r requirements_webui.txt
 
 2. Set environment variables:
 ```bash
-export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/YOUR_ENDPOINT_ID"
-export RUNPOD_API_KEY="YOUR_API_KEY"
+export RUNPOD_ENDPOINT="https://api.runpod.ai/v2/6tz3g3hg3tq4n6"
+export RUNPOD_API_KEY="zzz"
 ```
 
 3. Run the web UI:
