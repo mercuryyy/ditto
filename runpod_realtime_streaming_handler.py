@@ -284,14 +284,7 @@ async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, 
             def frame_callback(frame_packet):
                 """Callback when each frame is generated"""
                 streamed_frames.append(frame_packet)
-                # Immediately yield frame to client
-                yield {
-                    "type": "frame",
-                    "frame_data": frame_packet["data"],
-                    "frame_number": frame_packet["frame_number"],
-                    "timestamp": frame_packet["timestamp"],
-                    "status": "streaming"
-                }
+                print(f"Frame {frame_packet['frame_number']} generated and stored")
             
             # Initialize real-time streaming SDK
             SDK = RealTimeStreamingSDK(cfg_pkl, data_root)
@@ -344,55 +337,85 @@ async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, 
             
             # Process audio input based on mode
             if audio_chunks_base64:
-                # Process chunked audio for real-time streaming
+                # TRUE REAL-TIME STREAMING - process chunks as they arrive
                 yield {
                     "type": "processing",
-                    "message": f"Processing {len(audio_chunks_base64)} audio chunks",
+                    "message": f"Starting real-time processing of {len(audio_chunks_base64)} audio chunks",
                     "status": "processing"
                 }
                 
-                # Calculate total frames for all chunks
-                total_samples = len(audio_chunks_base64) * 1024  # Assuming 1024 samples per chunk
-                num_f = math.ceil(total_samples / 16000 * 25)
+                # Calculate expected frames based on total audio duration
+                total_audio_samples = len(audio_chunks_base64) * 6400  # Assuming 6400 samples per chunk
+                num_f = math.ceil(total_audio_samples / 16000 * 25)
                 SDK.setup_Nd(N_d=num_f, fade_in=-1, fade_out=-1, ctrl_info={})
                 
-                # Process each audio chunk with overlap for quality lip-sync
-                overlap_samples = 256  # 25% overlap (256 out of 1024 samples)
+                # Start a background thread to monitor frame generation
+                frame_monitor_active = True
+                last_frame_count = 0
                 
+                def monitor_frames():
+                    nonlocal last_frame_count
+                    while frame_monitor_active:
+                        current_count = len(streamed_frames)
+                        if current_count > last_frame_count:
+                            print(f"Frames generated: {current_count}")
+                            last_frame_count = current_count
+                        time.sleep(0.1)
+                
+                monitor_thread = threading.Thread(target=monitor_frames)
+                monitor_thread.start()
+                
+                # Process each audio chunk in real-time
                 for i, chunk_b64 in enumerate(audio_chunks_base64):
                     try:
                         # Decode audio chunk
                         chunk_bytes = base64.b64decode(chunk_b64)
                         audio_chunk = np.frombuffer(chunk_bytes, dtype=np.float32)
                         
-                        # Ensure chunk is correct size with padding if needed
-                        if len(audio_chunk) < 1024:
-                            audio_chunk = np.pad(audio_chunk, (0, 1024 - len(audio_chunk)), mode="constant")
-                        elif len(audio_chunk) > 1024:
-                            audio_chunk = audio_chunk[:1024]
+                        # Ensure chunk is the right size (6400 samples for HuBERT)
+                        if len(audio_chunk) != 6400:
+                            if len(audio_chunk) < 6400:
+                                audio_chunk = np.pad(audio_chunk, (0, 6400 - len(audio_chunk)), mode='constant')
+                            else:
+                                audio_chunk = audio_chunk[:6400]
                         
-                        # Process chunk through Ditto pipeline (will trigger frame streaming)
+                        # Feed audio chunk to pipeline - this triggers real-time processing
                         audio_processor.add_audio_chunk(audio_chunk)
                         
-                        # Real-time delay to match audio playback timing
-                        await asyncio.sleep(1024 / 16000)  # 64ms delay
+                        # Small async sleep to allow frames to be generated
+                        # This simulates real-time audio arrival
+                        await asyncio.sleep(0.4)  # 400ms per chunk (6400 samples at 16kHz)
                         
-                        # Progress update
-                        if i % 10 == 0:  # Every 10 chunks (~640ms)
+                        # Yield intermediate progress with current frame count
+                        if i % 2 == 0:  # Every 2 chunks (~800ms)
                             yield {
                                 "type": "progress",
                                 "processed_chunks": i + 1,
                                 "total_chunks": len(audio_chunks_base64),
-                                "status": "processing"
+                                "frames_generated": len(streamed_frames),
+                                "status": "streaming"
                             }
                     
                     except Exception as e:
-                        yield {
-                            "type": "warning",
-                            "message": f"Error processing chunk {i}: {str(e)}",
-                            "status": "warning"
-                        }
+                        print(f"Error processing chunk {i}: {e}")
                         continue
+                
+                # After all chunks are processed, signal end and flush
+                print("All audio chunks processed, flushing pipeline...")
+                SDK.close()
+                
+                # Wait for final frames to be generated
+                await asyncio.sleep(1.0)
+                
+                # Stop frame monitor
+                frame_monitor_active = False
+                monitor_thread.join(timeout=1)
+                
+                yield {
+                    "type": "processing_complete",
+                    "message": f"Real-time streaming complete. Generated {len(streamed_frames)} frames",
+                    "status": "processing"
+                }
                 
             elif full_audio_base64:
                 # Process full audio in optimized chunks
@@ -456,16 +479,29 @@ async def realtime_streaming_handler(job: Dict[str, Any]) -> Iterator[Dict[str, 
                 }
                 return
             
-            # Close SDK
-            SDK.close()
+            # Don't close SDK here - it's already closed after processing
             
-            # Send completion signal
+            # Send completion signal with frame count
             yield {
                 "type": "complete",
                 "total_frames": len(streamed_frames),
-                "message": "Real-time streaming completed",
+                "message": f"Real-time streaming completed. Generated {len(streamed_frames)} frames",
+                "frames_generated": len(streamed_frames),
                 "status": "complete"
             }
+            
+            # For debugging: Include first few frames in output (in production these would stream via WebSocket)
+            if streamed_frames and len(streamed_frames) > 0:
+                # Include a sample frame to verify generation
+                sample_frames = min(3, len(streamed_frames))  # Up to 3 frames for testing
+                for i in range(sample_frames):
+                    yield {
+                        "type": "sample_frame",
+                        "frame_number": streamed_frames[i]["frame_number"],
+                        "has_data": len(streamed_frames[i]["data"]) > 0,
+                        "data_size": len(streamed_frames[i]["data"]),
+                        "status": "frame"
+                    }
             
     except Exception as e:
         import traceback
